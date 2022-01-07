@@ -263,6 +263,7 @@ type KV struct {
 	numberOfReceivedMessages            prometheus.Counter
 	totalSizeOfReceivedMessages         prometheus.Counter
 	numberOfInvalidReceivedMessages     prometheus.Counter
+	numberOfDroppedMessages             prometheus.Counter
 	numberOfPulls                       prometheus.Counter
 	numberOfPushes                      prometheus.Counter
 	totalSizeOfPulls                    prometheus.Counter
@@ -969,7 +970,7 @@ func (m *KV) NotifyMsg(msg []byte) {
 	m.workersMu.Lock()
 	wCh = m.workersChannels[kvPair.Key]
 	if wCh == nil {
-		// spawn a key associated worker goroutine to asynchronously process updates
+		// spawn a key associated worker goroutine to process updates in background
 		wCh = make(chan valueUpdate, notifyMsgQueueSize)
 		go m.processValueUpdate(wCh)
 
@@ -980,6 +981,7 @@ func (m *KV) NotifyMsg(msg []byte) {
 	select {
 	case wCh <- valueUpdate{kvp: kvPair, codec: codec, messageSz: len(msg)}:
 	default:
+		m.numberOfDroppedMessages.Inc()
 		level.Warn(m.logger).Log("msg", "notify queue full, dropping message", "key", kvPair.Key, "queue_size", notifyMsgQueueSize)
 	}
 }
