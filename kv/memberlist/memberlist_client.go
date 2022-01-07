@@ -253,7 +253,7 @@ type KV struct {
 	messageCounter       int // Used to give each message in the sentMessages and receivedMessages a unique ID, for UI.
 
 	// Per-key value update workers
-	workersMu       sync.RWMutex
+	workersMu       sync.Mutex
 	workersChannels map[string]chan valueUpdate
 
 	// closed on shutdown
@@ -771,7 +771,7 @@ func (m *KV) notifyWatchers(key string) {
 	for _, kw := range m.watchers[key] {
 		select {
 		case kw <- key:
-		// notification sent.
+			// notification sent.
 		default:
 			// cannot send notification to this watcher at the moment
 			// but since this is a buffered channel, it means that
@@ -784,7 +784,7 @@ func (m *KV) notifyWatchers(key string) {
 			for _, pw := range ws {
 				select {
 				case pw <- key:
-				// notification sent.
+					// notification sent.
 				default:
 					c, _ := m.watchPrefixDroppedNotifications.GetMetricWithLabelValues(p)
 					if c != nil {
@@ -821,7 +821,7 @@ outer:
 
 			select {
 			case <-time.After(noChangeDetectedRetrySleep):
-			// ok
+				// ok
 			case <-ctx.Done():
 				lastError = ctx.Err()
 				break outer
