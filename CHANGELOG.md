@@ -11,8 +11,7 @@
 * [CHANGE] Rename `kv/kvtls` to `crypto/tls`. #39
 * [CHANGE] spanlogger: Take interface implementation for extracting tenant ID. #59
 * [CHANGE] The `status_code` label on gRPC client metrics has changed from '200' and '500' to '2xx', '5xx', '4xx', 'cancel' or 'error'. #68
-* [CHANGE] Memberlist changed probe interval from `1s` to `5s` and probe timeout from `500ms` to `2s`. #90
-* [CHANGE] Memberlist: parallelize processing of messages received by memberlist #110
+* [CHANGE] Memberlist: changed probe interval from `1s` to `5s` and probe timeout from `500ms` to `2s`. #90
 * [CHANGE] Remove package `math`. #104
 * [CHANGE] time: Remove time package. #103
 * [ENHANCEMENT] Add middleware package. #38
@@ -24,6 +23,7 @@
 * [ENHANCEMENT] Add runutil.CloseWithLogOnErr function. #58
 * [ENHANCEMENT] Optimise memberlist receive path when used as a backing store for rings with a large number of members. #76 #77 #84 #91 #93
 * [ENHANCEMENT] Memberlist: prepare the data to send on the write before starting counting the elapsed time for `-memberlist.packet-write-timeout`, in order to reduce chances we hit the timeout when sending a packet to other node. #89
+* [ENHANCEMENT] Memberlist: parallelize processing of messages received by memberlist. #110 
 * [ENHANCEMENT] flagext: for cases such as `DeprecatedFlag()` that need a logger, add RegisterFlagsWithLogger. #80
 * [ENHANCEMENT] Added option to BasicLifecycler to keep instance in the ring when stopping. #97
 * [ENHANCEMENT] Add WaitRingTokensStability function to ring, to be able to wait on ring stability excluding allowed state transitions. #95
