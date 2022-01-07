@@ -1,16 +1,14 @@
 package memberlist
 
 import (
-	bytes "bytes"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"flag"
 	"fmt"
-	"io"
-	math "math"
-	"runtime"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -29,7 +27,7 @@ import (
 const (
 	maxCasRetries              = 10          // max retries in CAS operation
 	noChangeDetectedRetrySleep = time.Second // how long to sleep after no change was detected in CAS
-	notifyMsgQueueSize         = 1024        // size of workers channel that handles memberlist messages
+	notifyMsgQueueSize         = 1024        // size of buffered channels to handle memberlist messages
 )
 
 // Client implements kv.Client interface, by using memberlist.KV
@@ -254,10 +252,9 @@ type KV struct {
 	receivedMessagesSize int
 	messageCounter       int // Used to give each message in the sentMessages and receivedMessages a unique ID, for UI.
 
-	// Worker synchronization fields.
-	notifyCh        chan *bytes.Buffer
-	notifyWorkersWG sync.WaitGroup
-	notifyBuffPool  sync.Pool // Used to copy passed message in NotifyMsg method.
+	// Per-key value update workers
+	workersMu       sync.RWMutex
+	workersChannels map[string]chan valueUpdate
 
 	// closed on shutdown
 	shutdown chan struct{}
@@ -318,6 +315,12 @@ type valueDesc struct {
 	codecID string
 }
 
+type valueUpdate struct {
+	kvp       KeyValuePair
+	codec     codec.Codec
+	messageSz int
+}
+
 func (v valueDesc) Clone() (result valueDesc) {
 	result = v
 	if v.value != nil {
@@ -351,18 +354,13 @@ func NewKV(cfg KVConfig, logger log.Logger, dnsProvider DNSProvider, registerer 
 		registerer: registerer,
 		provider:   dnsProvider,
 
-		store:          make(map[string]valueDesc),
-		codecs:         make(map[string]codec.Codec),
-		watchers:       make(map[string][]chan string),
-		prefixWatchers: make(map[string][]chan string),
-		notifyCh:       make(chan *bytes.Buffer, notifyMsgQueueSize),
-		notifyBuffPool: sync.Pool{
-			New: func() interface{} {
-				return &bytes.Buffer{}
-			},
-		},
-		shutdown:      make(chan struct{}),
-		maxCasRetries: maxCasRetries,
+		store:           make(map[string]valueDesc),
+		codecs:          make(map[string]codec.Codec),
+		watchers:        make(map[string][]chan string),
+		prefixWatchers:  make(map[string][]chan string),
+		workersChannels: make(map[string]chan valueUpdate),
+		shutdown:        make(chan struct{}),
+		maxCasRetries:   maxCasRetries,
 	}
 
 	mlkv.createAndRegisterMetrics()
@@ -441,12 +439,6 @@ func (m *KV) starting(_ context.Context) error {
 	list, err := memberlist.Create(mlCfg)
 	if err != nil {
 		return fmt.Errorf("failed to create memberlist: %v", err)
-	}
-	// Spawn notify workers.
-	numNotifyWorkers := runtime.NumCPU()
-	for i := 0; i < numNotifyWorkers; i++ {
-		m.notifyWorkersWG.Add(1)
-		go m.processNotifyMsg()
 	}
 	// Finish delegate initialization.
 	m.memberlist = list
@@ -619,7 +611,6 @@ func (m *KV) stopping(_ error) error {
 	}
 
 	close(m.shutdown)
-	m.notifyWorkersWG.Wait() // wait for workers completion
 
 	err = m.memberlist.Shutdown()
 	if err != nil {
@@ -779,7 +770,7 @@ func (m *KV) notifyWatchers(key string) {
 	for _, kw := range m.watchers[key] {
 		select {
 		case kw <- key:
-			// notification sent.
+		// notification sent.
 		default:
 			// cannot send notification to this watcher at the moment
 			// but since this is a buffered channel, it means that
@@ -792,7 +783,7 @@ func (m *KV) notifyWatchers(key string) {
 			for _, pw := range ws {
 				select {
 				case pw <- key:
-					// notification sent.
+				// notification sent.
 				default:
 					c, _ := m.watchPrefixDroppedNotifications.GetMetricWithLabelValues(p)
 					if c != nil {
@@ -829,7 +820,7 @@ outer:
 
 			select {
 			case <-time.After(noChangeDetectedRetrySleep):
-				// ok
+			// ok
 			case <-ctx.Done():
 				lastError = ctx.Err()
 				break outer
@@ -950,40 +941,6 @@ func (m *KV) NodeMeta(limit int) []byte {
 // NotifyMsg is method from Memberlist Delegate interface
 // Called when single message is received, i.e. what our broadcastNewValue has sent.
 func (m *KV) NotifyMsg(msg []byte) {
-	m.initWG.Wait()
-
-	// the passed message must be copied, since it may be altered after the call returns.
-	// https://github.com/hashicorp/memberlist/blob/master/delegate.go#L14-L15
-	msgBuff := m.notifyBuffPool.Get().(*bytes.Buffer)
-	io.Copy(msgBuff, bytes.NewReader(msg))
-
-	select {
-	case m.notifyCh <- msgBuff:
-	default:
-		level.Warn(m.logger).Log("msg", "notify queue full, dropping message", "queue_size", notifyMsgQueueSize)
-	}
-}
-
-func (m *KV) processNotifyMsg() {
-	defer m.notifyWorkersWG.Done()
-
-	for {
-		select {
-		case msgBuff := <-m.notifyCh:
-			m.notifyMsg(msgBuff.Bytes())
-
-			// put buffer back into the pool
-			msgBuff.Reset()
-			m.notifyBuffPool.Put(msgBuff)
-
-		case <-m.shutdown:
-			// stop worker on shutdown
-			return
-		}
-	}
-}
-
-func (m *KV) notifyMsg(msg []byte) {
 	m.numberOfReceivedMessages.Inc()
 	m.totalSizeOfReceivedMessages.Add(float64(len(msg)))
 
@@ -1007,30 +964,61 @@ func (m *KV) notifyMsg(msg []byte) {
 		level.Error(m.logger).Log("msg", "failed to decode received value, unknown codec", "codec", kvPair.GetCodec())
 		return
 	}
+	var wCh chan valueUpdate
 
-	// we have a ring update! Let's merge it with our version of the ring for given key
-	mod, version, err := m.mergeBytesValueForKey(kvPair.Key, kvPair.Value, codec)
+	m.workersMu.Lock()
+	wCh = m.workersChannels[kvPair.Key]
+	if wCh == nil {
+		// spawn a key associated worker goroutine to asynchronously process updates
+		wCh = make(chan valueUpdate, notifyMsgQueueSize)
+		go m.processValueUpdate(wCh)
 
-	changes := []string(nil)
-	if mod != nil {
-		changes = mod.MergeContent()
+		m.workersChannels[kvPair.Key] = wCh
 	}
+	m.workersMu.Unlock()
 
-	m.addReceivedMessage(message{
-		Time:    time.Now(),
-		Size:    len(msg),
-		Pair:    kvPair,
-		Version: version,
-		Changes: changes,
-	})
+	select {
+	case wCh <- valueUpdate{kvp: kvPair, codec: codec, messageSz: len(msg)}:
+	default:
+		level.Warn(m.logger).Log("msg", "notify queue full, dropping message", "key", kvPair.Key, "queue_size", notifyMsgQueueSize)
+	}
+}
 
-	if err != nil {
-		level.Error(m.logger).Log("msg", "failed to store received value", "key", kvPair.Key, "err", err)
-	} else if version > 0 {
-		m.notifyWatchers(kvPair.Key)
+func (m *KV) processValueUpdate(workerCh <-chan valueUpdate) {
+	for {
+		select {
+		case wData := <-workerCh:
+			// we have a ring update! Let's merge it with our version of the ring for given key
+			kvPair := wData.kvp
 
-		// Don't resend original message, but only changes.
-		m.broadcastNewValue(kvPair.Key, mod, version, codec)
+			mod, version, err := m.mergeBytesValueForKey(kvPair.Key, kvPair.Value, wData.codec)
+
+			changes := []string(nil)
+			if mod != nil {
+				changes = mod.MergeContent()
+			}
+
+			m.addReceivedMessage(message{
+				Time:    time.Now(),
+				Size:    wData.messageSz,
+				Pair:    kvPair,
+				Version: version,
+				Changes: changes,
+			})
+
+			if err != nil {
+				level.Error(m.logger).Log("msg", "failed to store received value", "key", kvPair.Key, "err", err)
+			} else if version > 0 {
+				m.notifyWatchers(kvPair.Key)
+
+				// Don't resend original message, but only changes.
+				m.broadcastNewValue(kvPair.Key, mod, version, wData.codec)
+			}
+
+		case <-m.shutdown:
+			// stop running on shutdown
+			return
+		}
 	}
 }
 

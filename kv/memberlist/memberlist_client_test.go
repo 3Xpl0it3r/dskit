@@ -1125,7 +1125,7 @@ func TestNotifyMsgResendsOnlyChanges(t *testing.T) {
 			"c": {Timestamp: now.Unix(), State: ACTIVE},
 		}}))
 
-	// Wait until notified message has been processed by some worker.
+	// Wait until KV update has been processed.
 	time.Sleep(time.Millisecond * 100)
 
 	// Check two things here:
@@ -1223,7 +1223,7 @@ func TestSendingOldTombstoneShouldNotForwardMessage(t *testing.T) {
 
 			kv.NotifyMsg(marshalKeyValuePair(t, key, codec, tc.msgToSend))
 
-			// Wait until notified message has been processed by some worker.
+			// Wait until KV update has been processed.
 			time.Sleep(time.Millisecond * 100)
 
 			bs := kv.GetBroadcasts(0, math.MaxInt32)
