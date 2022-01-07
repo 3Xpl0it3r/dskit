@@ -968,11 +968,7 @@ func (m *KV) NotifyMsg(msg []byte) {
 
 	ch := m.getKeyWorkerChannel(kvPair.Key)
 	select {
-	case ch <- valueUpdate{
-		value:       kvPair.Value,
-		codec:       codec,
-		messageSize: len(msg),
-	}:
+	case ch <- valueUpdate{value: kvPair.Value, codec: codec, messageSize: len(msg)}:
 	default:
 		m.numberOfDroppedMessages.Inc()
 		level.Warn(m.logger).Log("msg", "notify queue full, dropping message", "key", kvPair.Key)
