@@ -31,6 +31,11 @@
   * `ring_tokens_owned`
   * `ring_member_ownership_percent`
 * [CHANGE] Memberlist: `-memberlist.abort-if-join-fails` option now defaults to false.
+* [CHANGE] Remove middleware package. #182
+* [CHANGE] Memberlist: disabled TCP-based ping fallback, because dskit already uses a custom transport based on TCP. #194
+* [CHANGE] Memberlist: KV store now fast-joins memberlist cluster before serving any KV requests. #195
+* [CHANGE] Ring: remove duplicate state in NewOp func #203
+* [CHANGE] Memberlist: Increase the leave timeout to 10x the connection timeout, so that we can communicate the leave to at least 1 node, if the first 9 we try to contact times out.
 * [ENHANCEMENT] Add middleware package. #38
 * [ENHANCEMENT] Add the ring package #45
 * [ENHANCEMENT] Add limiter package. #41
@@ -40,7 +45,7 @@
 * [ENHANCEMENT] Add runutil.CloseWithLogOnErr function. #58
 * [ENHANCEMENT] Optimise memberlist receive path when used as a backing store for rings with a large number of members. #76 #77 #84 #91 #93
 * [ENHANCEMENT] Memberlist: prepare the data to send on the write before starting counting the elapsed time for `-memberlist.packet-write-timeout`, in order to reduce chances we hit the timeout when sending a packet to other node. #89
-* [ENHANCEMENT] Memberlist: parallelize processing of messages received by memberlist. #110 
+* [ENHANCEMENT] Memberlist: parallelize processing of messages received by memberlist. #110
 * [ENHANCEMENT] flagext: for cases such as `DeprecatedFlag()` that need a logger, add RegisterFlagsWithLogger. #80
 * [ENHANCEMENT] Added option to BasicLifecycler to keep instance in the ring when stopping. #97
 * [ENHANCEMENT] Add WaitRingTokensStability function to ring, to be able to wait on ring stability excluding allowed state transitions. #95
@@ -53,6 +58,8 @@
 * [ENHANCEMENT] Lifecycler: add flag to clear tokens on shutdown. #167
 * [ENHANCEMENT] ring: Added InstanceRegisterDelegate. #177
 * [ENHANCEMENT] ring: optimize shuffle-shard computation when lookback is used, and all instances have registered timestamp within the lookback window. In that case we can immediately return origial ring, because we would select all instances anyway. #181
+* [ENHANCEMENT] Runtimeconfig: Allow providing multiple runtime config yaml files as comma separated list file paths. #183
+* [ENHANCEMENT] Memberlist: Add cluster label support to memberlist client. #187
 * [BUGFIX] spanlogger: Support multiple tenant IDs. #59
 * [BUGFIX] Memberlist: fixed corrupted packets when sending compound messages with more than 255 messages or messages bigger than 64KB. #85
 * [BUGFIX] Ring: `ring_member_ownership_percent` and `ring_tokens_owned` metrics are not updated on scale down. #109
@@ -62,3 +69,5 @@
 * [BUGFIX] Lifecycler: if the ring backend storage is reset, the instance adds itself back to the ring with an updated registration timestamp set to current time. #165
 * [BUGFIX] Ring: fix bug where hash ring instances may appear unhealthy in the web UI even though they are not. #172
 * [BUGFIX] Lifecycler: if existing ring entry is reused, ring is updated immediately, and not on next heartbeat. #175
+* [BUGFIX] stringslicecsv: handle unmarshalling empty yaml string #206
+
