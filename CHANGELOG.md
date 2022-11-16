@@ -36,6 +36,7 @@
 * [CHANGE] Memberlist: KV store now fast-joins memberlist cluster before serving any KV requests. #195
 * [CHANGE] Ring: remove duplicate state in NewOp func #203
 * [CHANGE] Memberlist: Increase the leave timeout to 10x the connection timeout, so that we can communicate the leave to at least 1 node, if the first 9 we try to contact times out.
+* [CHANGE] Netutil: removed debug log message "found network interfaces with private IP addresses assigned". #216
 * [CHANGE] Runtimeconfig: Listener channels created by Manager no longer receive current value on every reload period, but only if any configuration file has changed. #218
 * [CHANGE] Services: `FailureWatcher.WatchService()` and `FailureWatcher.WatchManager()` now panic if `FailureWatcher` is `nil`. #219
 * [CHANGE] Memberlist: cluster label verification feature (`-memberlist.cluster-label` and `-memberlist.cluster-label-verification-disabled`) is now marked as stable. #222
@@ -66,7 +67,9 @@
 * [ENHANCEMENT] Runtimeconfig: Don't unmarshal and merge runtime config yaml files if they haven't changed since last check. #218
 * [ENHANCEMENT] ring: DoBatch now differentiates between 4xx and 5xx GRPC errors and keeps track of them separately. It only returns when there is a quorum of either error class. If your errors do not implement `GRPCStatus() *Status` from google.golang.org/grpc/status, then this change does not affect you. #201
 * [ENHANCEMENT] Added `<prefix>.tls-min-version` and `<prefix>.tls-cipher-suites` flags to client configurations. #217
-* [ENHANCEMENT] Concurrency: Add LimitedConcurrencySingleFlight to run jobs concurrently and with in-flight deduplication. 214
+* [ENHANCEMENT] Concurrency: Add LimitedConcurrencySingleFlight to run jobs concurrently and with in-flight deduplication. #214
+* [ENHANCEMENT] Add the ability to define custom gRPC health checks. #227
+* [ENHANCEMENT] Import Bytes type, DeleteAll function and DNS package from Thanos. #228
 * [BUGFIX] spanlogger: Support multiple tenant IDs. #59
 * [BUGFIX] Memberlist: fixed corrupted packets when sending compound messages with more than 255 messages or messages bigger than 64KB. #85
 * [BUGFIX] Ring: `ring_member_ownership_percent` and `ring_tokens_owned` metrics are not updated on scale down. #109
@@ -78,3 +81,4 @@
 * [BUGFIX] Lifecycler: if existing ring entry is reused, ring is updated immediately, and not on next heartbeat. #175
 * [BUGFIX] stringslicecsv: handle unmarshalling empty yaml string #206
 * [BUGFIX] Memberlist: retry joining memberlist cluster on startup when no nodes are resolved. #215
+* [BUGFIX] Ring status page: display 100% ownership as "100%", rather than "1e+02%". #231
