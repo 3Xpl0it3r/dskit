@@ -47,6 +47,7 @@
 * [ENHANCEMENT] Replace go-kit/kit/log with go-kit/log. #52
 * [ENHANCEMENT] Add spanlogger package. #42
 * [ENHANCEMENT] Add runutil.CloseWithLogOnErr function. #58
+* [ENHANCEMENT] Add cache, gate and stringsutil packages. #239
 * [ENHANCEMENT] Optimise memberlist receive path when used as a backing store for rings with a large number of members. #76 #77 #84 #91 #93
 * [ENHANCEMENT] Memberlist: prepare the data to send on the write before starting counting the elapsed time for `-memberlist.packet-write-timeout`, in order to reduce chances we hit the timeout when sending a packet to other node. #89
 * [ENHANCEMENT] Memberlist: parallelize processing of messages received by memberlist. #110
@@ -83,3 +84,4 @@
 * [BUGFIX] stringslicecsv: handle unmarshalling empty yaml string #206
 * [BUGFIX] Memberlist: retry joining memberlist cluster on startup when no nodes are resolved. #215
 * [BUGFIX] Ring status page: display 100% ownership as "100%", rather than "1e+02%". #231
+* [BUGFIX] Memberlist: fix crash when methods from `memberlist.Delegate` interface are called on `*memberlist.KV` before the service is fully started. #244
